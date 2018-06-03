@@ -1,3 +1,33 @@
+struct OpCode {
+    op: u8,
+    len: u8,
+    cycles: u8,
+    mode: String,
+    flags: Vec<bool>,
+    syntax: String,
+}
+
+impl OpCode {
+    pub fn new(op: u8, len: u8, cycles: u8, mode: String, flags: Vec<bool>, syntax: String) -> OpCode {
+        OpCode {
+            op,
+            len,
+            cycles,
+            mode,
+            flags,
+            syntax,
+        }
+    }
+}
+
+lazy_static! {
+    static ref OP_CODES: HashMap<u8, OpCode> = {
+        let op_codes = HashMap::new();
+        op_codes.insert(0x61, OpCode::new(0x61, ));
+        
+    }
+}
+
 enum OpCode {
     // ADC SBC
     61,
@@ -307,8 +337,4 @@ enum OpCode {
 
     // XCE
     FB,
-}
-
-struct Instruction {
-    
 }
