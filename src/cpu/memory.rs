@@ -2,38 +2,37 @@ use cpu::address_mode::*;
 use cpu::cpu::CPU;
 
 pub trait Mem {
-    fn load_op(pc: u32) -> u16;
-    fn load_byte_8(pc: u32, addr_mode: AddressMode) -> u8;
-    fn load_byte_16(pc: u32, addr_mode: AddressMode) -> u16;
+    fn load(&self, cpu: &CPU, bank: u8, addr_mode: AddressMode) -> u8;
+    fn store(&self, cpu: &CPU, bank: u8, addr_mode: AddressMode, to_store: u8); 
 }
 
 pub struct SimpleMemory {
-
+    mem: [u8; 1 << 24] 
 }
 
 impl SimpleMemory {
     pub fn new() -> SimpleMemory {
-        SimpleMemory {}
+        SimpleMemory {
+            mem: [0; 1 << 24]
+        }
     }
-}
 
-fn get_address(cpu: &CPU, addr_mode: AddressMode) -> u8 {
-    let get_address_fn = ADDRESSING_MODES.get(addr_mode).unwrap();
-    get_address_fn(cpu)
+    fn load_from_store(&self, addr: u32) -> u8 {
+        self.mem[addr]
+    }
+
+    fn store_value(&self, addr: u32, to_store: u8) {
+        self.mem[addr] = to_store;
+    }
 }
 
 impl Mem for SimpleMemory {
-    fn load_op(pc: u32) -> u16 {
-        1_u16
+    fn load(&self, cpu: &CPU, address: u32) -> u8 {
+        self.load_from_store(address)
     }
 
-    fn load_byte_8(cpu: &CPU, addr_mode: AddressMode) -> u8 {
-        let addr = Mem::get_address(cpu, addr_mode);
-        load(addr)
-    }
-
-    fn load_byte_16(cpu: &CPU, addr_mode: AddressMode) -> u16 {
-        let addr = Mem::get_address(cpu, addr_mode);
-        (load(addr) << 8) | load(addr + 1)
+    fn store(&self, cpu: &CPU, address: u32, to_store: u16) {
+        self.store_value(address, to_store);
     }
 }
+    

@@ -2,88 +2,109 @@ use std::collections::HashMap;
 
 use cpu::cpu::CPU;
 
-type AddressModeFunction = fn(&CPU) -> u8;
-
 pub enum AddressMode {
     Accumulator,
     Immediate,
     Implied,
-    Relative,
+    Relative8,
+    Relative16,
     Absolute,
     ZeroPage,
     Indirect,
-    AbsoluteIndexed,
-    ZeroPageIndexed,
+    AbsoluteIndexedX,
+    AbsoluteIndexedY,
+    ZeroPageIndexedX,
+    ZeroPageIndexedY,
     IndexedIndirect,
     IndirectIndexed
 }
 
-pub static ADDRESSING_MODES: HashMap<AddressMode, AddressModeFunction> = {
-    let mut am = HashMap::new();
-
-    am.insert(AddressMode::Accumulator, accumulator);
-    am.insert(AddressMode::Immediate, immediate);
-    am.insert(AddressMode::Implied, implied);
-    am.insert(AddressMode::Relative, relative);
-    am.insert(AddressMode::Absolute, absolute);
-    am.insert(AddressMode::ZeroPage, zero_page);
-    am.insert(AddressMode::Indirect, indirect);
-    am.insert(AddressMode::AbsoluteIndexed, absolute_indexed);
-    am.insert(AddressMode::ZeroPageIndexed, zero_page_indexed);
-    am.insert(AddressMode::IndexedIndirect, indexed_indirect);
-    am.insert(AddressMode::IndirectIndexed, indirect_indexed);
-
-    am
-};
-
 // non-indexed, non-memory
 
-fn accumulator(cpu: &CPU) -> u16 {
+pub fn accumulator(cpu: &CPU) -> u32 {
     cpu.a()
 }
 
-fn immediate(cpu: &CPU) -> u32 {
+pub fn immediate(cpu: &CPU) -> u32 {
     cpu.pc() + 1
 }
 
-fn implied() {
+pub fn implied(_: &CPU) {
     //nothing
 }
 
 // non-indexed, memory
 
-fn relative(cpu: &CPU, branch_offset: i8) -> u32 {
-    cpu.pc() + branch_offset
+pub fn relative_8(cpu: &CPU) -> u32 {
+    let pc = cpu.pc();
+    let branch_offset = cpu.next_b();
+    if branch_offset <= 0x7F {
+        (cpu.pbr() << 16 | pc + 2 + branch_offset)
+    } else {
+        (cpu.pbr() << 16 | pc - 254 + branch_offset)
+    }
 }
 
-fn absolute(cpu: &CPU, LL: u8, HH: u8) -> u32 {
-    (cpu.dbr() << 4) | (HH << 2) | LL
+pub fn relative_16(cpu: &CPU) -> u32 {
+    let pc = cpu.pc();
+    let lo = cpu.next_b();
+    let hi = cpu.next_b();
+    let offset = pc + 3 + (hi|lo);
+    cpu.pbr() << 16 | offset 
 }
 
-fn zero_page(loc: u8) -> u8 {
-    loc
+pub fn absolute(cpu: &CPU, LL: u8, HH: u8) -> u32 {
+    let lo = cpu.next_b();
+    let hi = cpu.next_b();
+    
+    (cpu.dbr() << 16) | (hi << 8) | lo 
+}
+
+pub fn zero_page(cpu: &CPU) -> u32 {
+    cpu.next_b() 
+}
+
+fn direct(cpu: &CPU) -> u32 {
+    let bank = cpu.dbr();
+    let ll = cpu.next_b();
+
+    (0 | bank << 8 | ll)
 }
 
 fn indirect(cpu: &CPU, LL: u8, HH: u8) -> u32 {
     cpu.mem().load((HH << 2) | LL)
 }
 
-fn absolute_indexed(cpu: &CPU, LL: u8, HH: u8, reg: u8) -> u32 {
-    absolute(cpu, LL, HH) + reg
+fn absolute_indexed_x(cpu: &CPU, LL: u8, HH: u8) -> u32 {
+    absolute(cpu) + cpu.x() 
 }
 
-fn zero_page_indexed(loc: u8, reg: u8) -> u8 {
-    zero_page(loc) + reg
+fn absolute_indexed_y(cpu: &CPU, LL: u8, HH: u8) -> u32 {
+    absolute(cpu) + cpu.y() 
 }
 
-fn indexed_indirect(loc: u8) -> u32 {
-    let addr = (loc + x) & 0xFF;
-    let final_addr = load(addr);
-    load(final_addr)
+fn zero_page_indexed_x(cpu: &CPU) -> u8 {
+    zero_page(cpu) + cpu.x() 
 }
 
-fn indirect_indexed(loc: u8) {
-    let addr = load(loc);
-    let final_addr = addr + y;
-    load(final_addr)
+fn zero_page_indexed_y(cpu: &CPU) -> u8 {
+    zero_page(cpu) + cpu.y() 
+}
+
+fn indexed_indirect(cpu: &CPU) -> u32 {
+    let loc = cpu.next_b(); 
+    
+    let addr = (loc + cpu.x()) & 0xFF;
+    let final_addr = cpu.load_8(addr);
+
+    cpu.load_8(final_addr)
+}
+
+fn indirect_indexed(cpu: &CPU) {
+    let loc = cpu.next_b(); 
+    
+    let addr = cpu.load(loc);
+    let final_addr = addr + cpu.y();
+    
+    cpu.load_8(final_addr)
 }

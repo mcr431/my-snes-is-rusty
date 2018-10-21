@@ -1,7 +1,7 @@
 use Rom;
 
 use std::collections::{HashMap};
-use cpu::address_mode::{AddressMode, ADDRESSING_MODES};
+use cpu::address_mode::*;
 use cpu::memory::*;
 
 struct StatusFlags {
@@ -107,6 +107,109 @@ impl CPU {
         7
     }
 
+    fn next_b(&self) -> u8 {
+        self.pc += 1;
+        self.load_8(self.pbr, self.pc);
+    }
+
+    fn load_8(&self, bank: u8, addr_mode: AddressMode) -> u8 {
+        let address = match addr_mode {
+            AddressMode::Accumulator => {
+                self.a 
+            },
+            AddressMode::Immediate => {
+                self.pc + 1 
+            },
+            AddressMode::Implied => {
+                panic!("trying to load with implied addressing mode"); 
+            },
+            AddressMode::Relative8 => {
+                let branch_offset = self.next_b();
+                
+                if branch_offset <= 0x7F {
+                    (self.pbr << 16 | self.pc + 2 + branch_offset)
+                } else {
+                    (self.pbr << 16 | self.pc - 254 + branch_offset)
+                }
+            },
+            AddressMode::Relative16 => {
+                let pc = self.pc();
+                let lo = self.next_b();
+                let hi = self.next_b();
+                let offset = pc + 3 + (hi|lo);
+                self.pbr << 16 | offset 
+            },
+            AddressMode::Absolute => {
+                let lo = self.next_b();
+                let hi = self.next_b();
+                
+                (self.dbr << 16) | (hi << 8) | lo 
+            },
+            AddressMode::ZeroPage => {
+                self.next_b()
+                    // todo -> find which bank  
+            },
+            AddressMode::Indirect => {
+                // todo -> hh and ll ??
+                self.mem.load((HH << 2) | LL)    
+            },
+            AddressMode::AbsoluteIndexedX => {
+                let lo = self.next_b();
+                let hi = self.next_b();
+                
+                let absolute = (self.dbr << 16) | (hi << 8) | lo; 
+                absolute + self.x
+            },
+            AddressMode::AbsoluteIndexedY => {
+                let lo = self.next_b();
+                let hi = self.next_b();
+                
+                let absolute = (self.dbr << 16) | (hi << 8) | lo; 
+                absolute + self.y
+            },
+            AddressMode::ZeroPageIndexedX => {
+                self.next_b() + self.x
+            },
+            AddressMode::ZeroPageIndexedY => {
+                self.next_b() + self.x
+            },
+            AddressMode::IndexedIndirect => {
+                let loc = self.next_b(); 
+    
+                let addr = (loc + self.x) & 0xFF;
+                let final_addr = self.mem.load(addr);
+
+                self.mem.load(final_addr)
+            },
+            AddressMode::IndirectIndexed => {
+                let loc = self.next_b(); 
+    
+                let addr = self.mem.load(loc);
+                let final_addr = addr + self.y;
+                
+                self.mem.load(final_addr)
+            }
+        };
+        
+        self.mem.load(self, address) 
+    }
+
+    fn load_16(&self, addr_mode: AddressMode) -> u16 {
+       let lo = self.load_8(addr_mode) as u16;
+       self.pc += 1;
+       let hi = self.load_8(addr_mode) as u16;
+
+       ( hi << 8 | lo )
+    }
+
+    fn store_8(&self, bank: u8, addr_mode: AddressMode, to_store: u8) {
+        self.mem.store(self, bank, addr_mode, to_store);
+    }
+
+    fn store_16(&self, bank: u8, addr_mode: AddressMode, to_store: u16) {
+        self.mem.store(self, bank, addr_mode, to_store); 
+    }
+
     pub fn run(&mut self, ops: Rom) {
         let interrupt_period = 7; // TODO -> this was arbitrary. find out what number i need
 
@@ -118,13 +221,62 @@ impl CPU {
             self.cy -= Self::get_cycles(*opcode) as u16;
 
             match opcode {
-                0x18 => self.clc(),
-                0xD8 => self.cld(),
-                0x58 => self.cli(),
-                0xB8 => self.clv(),
-                0x38 => self.sec(),
-                0xF8 => self.sed(),
-                0x78 => self.sei(),
+                0x18 => self.clc(AddressMode::Implied),
+                0xD8 => self.cld(AddressMode::Implied),
+                0x58 => self.cli(AddressMode::Implied),
+                0xB8 => self.clv(AddressMode::Implied),
+                0x38 => self.sec(AddressMode::Implied),
+                0xF8 => self.sed(AddressMode::Implied),
+                0x78 => self.sei(AddressMode::Implied),
+                0xA1 => self.lda(AddressMode::DirectIndexedIndirect),
+                0xA3 => self.lda(AddressMode::StackRelative),
+                0xA5 => self.lda(AddressMode::Direct),
+                0xA7 => self.lda(AddressMode::DirectIndirectLong),
+                0xA9 => self.lda(AddressMode::Immediate), 
+                0xAD => self.lda(AddressMode::Absolute),
+                0xAF => self.lda(AddressMode::AbsoluteLong),
+                0xB1 => self.lda(AddressMode::DirectIndirectIndexed),
+                0xB2 => self.lda(AddressMode::DirectIndirect),
+                0xB3 => self.lda(AddressMode::StackRelativeIndirectIndexed),
+                0xB5 => self.lda(AddressMode::DirectIndexedX),
+                0xB7 => self.lda(AddressMode::DirectIndirectIndexedLong),
+                0xB9 => self.lda(AddressMode::AbsoluteIndexedY),
+                0xBD => self.lda(AddressMode::AbsoluteIndexedX),
+                0xBF => self.lda(AddressMode::AbsoluteLongIndexedX),
+                0xA2 => self.ldx(AddressMode::Immediate),
+                0xA6 => self.ldx(AddressMode::Direct),
+                0xAE => self.ldx(AddressMode::Absolute),
+                0xB6 => self.ldx(AddressMode::DirectIndexedY),
+                0xBE => self.ldx(AddressMode::AbsoluteIndexedY),
+                0xA0 => self.ldy(AddressMode::Immediate),        
+                0xA4 => self.ldy(AddressMode::Direct),
+                0xAC => self.ldy(AddressMode::Absolute),   
+                0xB4 => self.ldy(AddressMode::DirectIndexedX),
+                0xBC => self.ldy(AddressMode::AbsoluteIndexedX),
+                0x81 => self.sta(AddressMode::DirectIndexedIndirect),
+                0x83 => self.sta(AddressMode::StackRelative),
+                0x85 => self.sta(AddressMode::Direct),
+                0x87 => self.sta(AddressMode::DirectIndirectLong),
+                0x8D => self.sta(AddressMode::Absolute),
+                0x8F => self.sta(AddressMode::AbsoluteLong),
+                0x91 => self.sta(AddressMode::DirectIndirectIndexed),
+                0x92 => self.sta(AddressMode::DirectIndirect),
+                0x93 => self.sta(AddressMode::StackRelativeIndirectIndexed),
+                0x95 => self.sta(AddressMode::DirectIndexedX),
+                0x97 => self.sta(AddressMode::DirectIndirectIndexedLong),
+                0x99 => self.sta(AddressMode::AbsoluteIndexedY),
+                0x9D => self.sta(AddressMode::AbsoluteIndexedX),
+                0x9F => self.sta(AddressMode::AbsoluteLongIndexedX),
+                0x86 => self.stx(AddressMode::Direct),
+                0x8E => self.stx(AddressMode::Absolute),
+                0x96 => self.stx(AddressMode::DirectIndexedY),
+                0x84 => self.sty(AddressMode::Direct),
+                0x8C => self.sty(AddressMode::Absolute),
+                0x94 => self.sty(AddressMode::DirectIndexedX),    
+                0x64 => self.stz(AddressMode::Direct),
+                0x74 => self.stz(AddressMode::DirectIndexedX),
+                0x9C => self.stz(AddressMode::Absolute),
+                0x9E => self.stz(AddressMode::AbsoluteIndexedX),
                 _ => panic!("Opcode {:X} is not implemented", opcode)
             }
 
@@ -340,14 +492,14 @@ impl CPU {
         self.p.zero = a == b;
     }
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cmp_8(&mut self, to_compare: u8) {
+    fn cmp_8(&mut self, am: AddressMode) {
+        let to_compare = self.load_8(self, am);
         let a = self.a as u8;
         self.compare8(a, to_compare);
     }
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cmp_16(&mut self, to_compare: u16) {
+    fn cmp_16(&mut self, am: AddressMode) {
+        let to_compare = self.load_16(self, am);
         let a = self.a;
         self.compare16(a, to_compare);
     }
@@ -358,14 +510,14 @@ impl CPU {
     //
     ////////////////////////////////////
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cpx_8(&mut self, to_compare: u8) {
+    fn cpx_8(&mut self, am: AddressMode) {
+        let to_compare = self.load_8(self, am);
         let x = self.x as u8;
         self.compare8(x, to_compare);
     }
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cpx_16(&mut self, to_compare: u16) {
+    fn cpx_16(&mut self, am: AddressMode) {
+        let to_compare = self.load_16(self, am);
         let x = self.x;
         self.compare16(x, to_compare);
     }
@@ -376,14 +528,14 @@ impl CPU {
     //
     ////////////////////////////////////
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cpy_8(&mut self, to_compare: u8) {
+    fn cpy_8(&mut self, am: AddressMode) {
+        let to_compare = self.load_8(self, am);
         let y = self.y as u8;
-        self.compare8(y as u8, to_compare);
+        self.compare8(y, to_compare);
     }
 
-    // TODO -> refactor this to take an address mode instead of to_compare
-    fn cpy_16(&mut self, to_compare: u16) {
+    fn cpy_16(&mut self, am: AddressMode) {
+        let to_compare = self.load_16(self, am);
         let y = self.y;
         self.compare16(y, to_compare);
     }
@@ -420,5 +572,87 @@ impl CPU {
 
     fn sei(&mut self) {
         self.p.interrupt_disable = true;
+    }
+
+    ////////////////////////////////////
+    //
+    //       LOADING / STORING 
+    //
+    ////////////////////////////////////
+  
+    fn lda_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_8(am);
+        self.a = val;
+    }
+
+    fn lda_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_16(am);
+        self.a = val;
+    }
+    
+    fn ldx_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_8(am);
+        self.x = val;
+    }
+
+    fn ldx_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_16(am);
+        self.x = val;
+    }
+
+    fn ldy_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_8(am);
+        self.y = val;
+    }
+
+    fn ldy_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        let val = self.load_16(am);
+        self.y = val;
+    }
+
+    fn sta_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_8(am, self.a as u8);
+    }
+
+    fn sta_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_16(am, self.a);
+    }
+
+    fn stx_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_8(am, self.x as u8);
+    }
+
+    fn stx_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_16(am, self.x);
+    }
+
+    fn sty_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_8(am, self.y as u8);
+    }
+
+    fn sty_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_16(am, self.y);
+    }
+
+    fn stz_8(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_8(am, 0);
+    }
+
+    fn stz_16(&self, am: AddressMode) {
+        // TODO -> bank 
+        self.store_16(am, 0);
     }
 }
