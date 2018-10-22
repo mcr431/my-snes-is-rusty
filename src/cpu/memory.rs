@@ -2,8 +2,8 @@ use cpu::address_mode::*;
 use cpu::cpu::CPU;
 
 pub trait Mem {
-    fn load(&self, cpu: &CPU, bank: u8, addr_mode: AddressMode) -> u8;
-    fn store(&self, cpu: &CPU, bank: u8, addr_mode: AddressMode, to_store: u8); 
+    fn load(&self, cpu: &CPU, address: u32) -> u8;
+    fn store(&self, cpu: &CPU, address: u32, to_store: u8); 
 }
 
 pub struct SimpleMemory {
@@ -31,7 +31,7 @@ impl Mem for SimpleMemory {
         self.load_from_store(address)
     }
 
-    fn store(&self, cpu: &CPU, address: u32, to_store: u16) {
+    fn store(&self, cpu: &CPU, address: u32, to_store: u8) {
         self.store_value(address, to_store);
     }
 }

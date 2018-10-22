@@ -50,8 +50,8 @@ pub struct CPU {
     // emulation: bool,
     // wai: bool
     // trace: bool,
-    mem: Mem,
     should_exit: bool,
+    mem: Mem,
 }
 
 impl CPU {
@@ -98,7 +98,7 @@ impl CPU {
         self.pbr
     }
 
-    pub fn mem(&self) -> impl Mem {
+    pub fn mem(&self) -> Box<dyn Mem> {
         self.mem
     }
 
@@ -142,6 +142,8 @@ impl CPU {
             AddressMode::Absolute => {
                 let lo = self.next_b();
                 let hi = self.next_b();
+
+                // TODO -> if instr is JMP or JSR, bank is pbr instead of dbr
                 
                 (self.dbr << 16) | (hi << 8) | lo 
             },
@@ -150,8 +152,21 @@ impl CPU {
                     // todo -> find which bank  
             },
             AddressMode::Indirect => {
-                // todo -> hh and ll ??
-                self.mem.load((HH << 2) | LL)    
+                let lo = self.next_b(); 
+               
+                let (lo_p, hi_p) = if self.e == 1 && self.dl() == 0 {
+                    let lp = (self.dh() << 8) | lo;
+                    let hp = (self.dh() << 8) | (lo + 1);
+                    (lp, hp)
+                } else {
+                    let lp = self.d + lo;
+                    (lp, lp + 1) 
+                };
+
+                let one = self.mem.load(lo_p);
+                let two = self.mem.load(hi_p);
+
+                (one << 8) | two
             },
             AddressMode::AbsoluteIndexedX => {
                 let lo = self.next_b();
