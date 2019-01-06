@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{Read, Error};
 
 use cpu::cpu::CPU;
+use cpu::memory::{Mem, SimpleMemory};
+use std::sync::{Arc, RwLock};
 
 fn main() -> Result<(), Error> {
     // todo -> read LinkToThePast
@@ -14,8 +16,13 @@ fn main() -> Result<(), Error> {
     // construct CPU
     // todo -> pass the chopped Vec to CPU
 
+    // mem needs to be thread-safe / exist outside of the scope of the CPU so the APU and PPU can use it
+    let mut mem: Arc<RwLock<Mem>> = Arc::new(RwLock::new(SimpleMemory::new()));
+
+    // inject mem here
+    let mut cpu = CPU::new(mem.clone());
+
     let rom = load_rom("LinkToThePast")?;
-    let mut cpu = CPU::new();
     cpu.run(rom.into_iter().skip(512).collect());
 
     Ok(())
