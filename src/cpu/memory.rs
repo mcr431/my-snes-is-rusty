@@ -1,9 +1,6 @@
-use cpu::address_mode::*;
-use cpu::cpu::CPU;
-
 pub trait Mem {
-    fn load(&self, cpu: &CPU, address: u32) -> u8;
-    fn store(&self, cpu: &CPU, address: u32, to_store: u8); 
+    fn load(&self, bank: u8, address: u16) -> u8;
+    fn store(&mut self, bank: u8, address: u16, to_store: u8);
 }
 
 pub struct SimpleMemory {
@@ -17,22 +14,26 @@ impl SimpleMemory {
         }
     }
 
-    fn load_from_store(&self, addr: u32) -> u8 {
-        self.mem[addr]
+    fn get_index(bank: u8, address: u16) -> usize {
+        (bank as usize) << 16 | (address as usize)
     }
 
-    fn store_value(&self, addr: u32, to_store: u8) {
-        self.mem[addr] = to_store;
+    fn load_from_store(&self, bank: u8, address: u16) -> u8 {
+        self.mem[Self::get_index(bank, address)]
+    }
+
+    fn store_value(&mut self, bank: u8, address: u16, to_store: u8) {
+        self.mem[Self::get_index(bank, address)] = to_store;
     }
 }
 
 impl Mem for SimpleMemory {
-    fn load(&self, cpu: &CPU, address: u32) -> u8 {
-        self.load_from_store(address)
+    fn load(&self, bank: u8, address: u16) -> u8 {
+        self.load_from_store(bank, address)
     }
 
-    fn store(&self, cpu: &CPU, address: u32, to_store: u8) {
-        self.store_value(address, to_store);
+    fn store(&mut self, bank: u8, address: u16, to_store: u8) {
+        self.store_value(bank, address, to_store);
     }
 }
     
